@@ -1,0 +1,44 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.ohneben/anytype-mcp",
+  "description": "Self-hosted Anytype MCP server (Docker + Streamable HTTP).",
+  "status": "active",
+  "repository": {
+    "url": "https://github.com/ohneben/Anytype-MCP",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "packages": [
+    {
+      "registry_type": "oci",
+      "registry_base_url": "https://ghcr.io",
+      "identifier": "ohneben/anytype-mcp",
+      "version": "1.0.0",
+      "transport": {
+        "type": "streamable-http"
+      },
+      "environment_variables": [
+        {
+          "name": "ANYTYPE_API_KEY",
+          "description": "Your Anytype API key (Anytype -> Settings -> API Keys).",
+          "is_required": true,
+          "is_secret": true,
+          "format": "string"
+        },
+        {
+          "name": "ANYTYPE_API_BASE_URL",
+          "description": "Where the Anytype desktop API is reachable from the container. Default: http://host.docker.internal:31009",
+          "is_required": false,
+          "format": "string"
+        },
+        {
+          "name": "MCP_SHARED_TOKEN",
+          "description": "Optional bearer token required on the /mcp endpoint. Empty = open (localhost only).",
+          "is_required": false,
+          "is_secret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
