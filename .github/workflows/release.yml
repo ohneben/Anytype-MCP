@@ -1,0 +1,29 @@
+name: Release
+
+# Publishes a GitHub Release automatically whenever a version tag (v*.*.*) is
+# pushed. Release notes are generated from the commits/PRs since the last tag.
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            A self-hosted Anytype MCP server — the official server's full tool set
+            as an always-on Docker container with a Streamable-HTTP endpoint any
+            MCP client can connect to. See the README for setup; a container image
+            for this tag is published to GHCR.
