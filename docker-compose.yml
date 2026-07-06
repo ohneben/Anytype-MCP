@@ -1,0 +1,35 @@
+services:
+  anytype-mcp:
+    build: .
+    image: anytype-mcp:latest
+    container_name: anytype-mcp
+    restart: unless-stopped
+    ports:
+      # Host port -> container. Override with PORT in .env.
+      - "${PORT:-8769}:8769"
+    environment:
+      PORT: 8769
+      # The Anytype desktop app serves its API on 127.0.0.1:31009 on the HOST.
+      # host.docker.internal resolves to the host from inside the container
+      # (Docker Desktop on macOS/Windows; enabled on Linux via extra_hosts below).
+      ANYTYPE_API_BASE_URL: ${ANYTYPE_API_BASE_URL:-http://host.docker.internal:31009}
+      # Anytype API key (created in the app: Settings -> API Keys). See .env.
+      ANYTYPE_API_KEY: ${ANYTYPE_API_KEY}
+      ANYTYPE_VERSION: ${ANYTYPE_VERSION:-2025-11-08}
+      # Optional shared bearer token the Claude connector must send.
+      # Empty = open, intended for localhost-only use.
+      MCP_SHARED_TOKEN: ${MCP_SHARED_TOKEN:-}
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://127.0.0.1:8769/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
