@@ -1,4 +1,4 @@
-# Anytype MCP Server (self-hosted)
+# ohneben Anytype MCP
 
 [![CI](https://github.com/ohneben/Anytype-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/ohneben/Anytype-MCP/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE.md)
