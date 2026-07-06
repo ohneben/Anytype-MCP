@@ -1,0 +1,55 @@
+# ── Dependencies ──────────────────────────────────────────────
+node_modules/
+
+# ── Build output ──────────────────────────────────────────────
+build/
+dist/
+bin/
+*.tsbuildinfo
+
+# ── Secrets & environment ─────────────────────────────────────
+# Never commit real credentials. Only .env.example is tracked.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets.json
+*.local
+
+# ── Logs ──────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Test / coverage ───────────────────────────────────────────
+coverage/
+.nyc_output/
+.vitest/
+
+# ── Editor / IDE ──────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS files ──────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── AI assistant / local config ───────────────────────────────
+.claude/
+CLAUDE.local.md
+*.local.md
+
+# ── Misc temp ─────────────────────────────────────────────────
+.cache/
+tmp/
+temp/

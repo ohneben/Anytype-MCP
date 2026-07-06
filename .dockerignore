@@ -1,0 +1,9 @@
+node_modules
+build
+bin
+.git
+.github
+.env
+*.log
+.DS_Store
+**/__tests__
