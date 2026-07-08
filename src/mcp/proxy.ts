@@ -5,7 +5,7 @@ import { JSONSchema7 as IJsonSchema } from "json-schema";
 import { Headers } from "node-fetch";
 import { OpenAPIV3 } from "openapi-types";
 import { HttpClient, HttpClientError } from "../client/http-client";
-import { OpenAPIToMCPConverter } from "../openapi/parser";
+import { OpenAPIToMCPConverter, OperationWithMeta } from "../openapi/parser";
 import { determineBaseUrl } from "../utils/base-url";
 
 type PathItemObject = OpenAPIV3.PathItemObject & {
@@ -41,7 +41,7 @@ export class MCPProxy {
   private server: Server;
   private httpClient: HttpClient;
   private tools: Record<string, NewToolDefinition>;
-  private openApiLookup: Record<string, OpenAPIV3.OperationObject & { method: string; path: string }>;
+  private openApiLookup: Record<string, OperationWithMeta>;
 
   constructor(name: string, openApiSpec: OpenAPIV3.Document) {
     this.server = new Server(
@@ -134,7 +134,7 @@ export class MCPProxy {
     });
   }
 
-  private findOperation(operationId: string): (OpenAPIV3.OperationObject & { method: string; path: string }) | null {
+  private findOperation(operationId: string): OperationWithMeta | null {
     return this.openApiLookup[operationId] ?? null;
   }
 

@@ -8,6 +8,26 @@ type NewToolMethod = {
   description: string;
   inputSchema: IJsonSchema & { type: "object" };
   outputSchema?: IJsonSchema;
+  /**
+   * Map of `sanitizedKey -> originalOpenAPIName` for every property key that had
+   * to be rewritten to satisfy {@link TOOL_ARG_KEY}. Only renamed keys are
+   * recorded (identity entries are skipped), so this is empty/undefined for
+   * specs whose names are already legal — e.g. the currently bundled Anytype
+   * spec. The HTTP client reverses this map before issuing the request so the
+   * wire payload always uses the raw OpenAPI names.
+   */
+  argNameMap?: Record<string, string>;
+};
+
+/**
+ * An OpenAPI operation enriched with the concrete method/path it was found at,
+ * plus the reverse {@link NewToolMethod.argNameMap} used to restore raw property
+ * names at the HTTP boundary. `argNameMap` is absent when no key was renamed.
+ */
+export type OperationWithMeta = OpenAPIV3.OperationObject & {
+  method: string;
+  path: string;
+  argNameMap?: Record<string, string>;
 };
 
 type FunctionParameters = {
@@ -16,6 +36,54 @@ type FunctionParameters = {
   required?: string[];
   [key: string]: unknown;
 };
+
+/**
+ * The Anthropic Messages API requires every tool `input_schema.properties` key
+ * to match this pattern; a single illegal key rejects (400s) the entire Claude
+ * session. Tool argument keys are copied from OpenAPI parameter and requestBody
+ * property names, which the server fetches at runtime from the user's installed
+ * Anytype app — so an unknown future spec could ship an illegal name.
+ */
+export const TOOL_ARG_KEY = /^[a-zA-Z0-9_.-]{1,64}$/;
+
+/**
+ * Coerce an OpenAPI property name into a key that satisfies {@link TOOL_ARG_KEY}.
+ *
+ * Returns `name` unchanged when it is already legal (true for every name in the
+ * currently bundled spec, so today's behaviour is byte-identical). Otherwise it
+ * replaces runs of illegal characters with a single `_`, trims leading/trailing
+ * `_`/`.`, caps the result at 64 characters, and — if the coerced key collides
+ * with one already emitted for the same operation (`used`) — appends a numeric
+ * suffix to keep it unique. Legal names are returned as-is even if seen before,
+ * preserving the pre-existing "last property wins" overwrite behaviour.
+ */
+export function sanitizePropertyKey(name: string, used?: ReadonlySet<string>): string {
+  if (TOOL_ARG_KEY.test(name)) {
+    return name;
+  }
+
+  let key = name
+    .replace(/[^a-zA-Z0-9_.-]+/g, "_")
+    .replace(/^[_.]+/, "")
+    .replace(/[_.]+$/, "");
+  if (key.length === 0) {
+    key = "arg";
+  }
+  key = key.slice(0, 64);
+
+  if (used?.has(key)) {
+    let i = 1;
+    let candidate: string;
+    do {
+      const suffix = `_${i}`;
+      candidate = key.slice(0, 64 - suffix.length) + suffix;
+      i += 1;
+    } while (used.has(candidate));
+    key = candidate;
+  }
+
+  return key;
+}
 
 export class OpenAPIToMCPConverter {
   private schemaCache: Record<string, IJsonSchema> = {};
@@ -314,19 +382,16 @@ export class OpenAPIToMCPConverter {
 
   convertToMCPTools(): {
     tools: Record<string, { methods: NewToolMethod[] }>;
-    openApiLookup: Record<string, OpenAPIV3.OperationObject & { method: string; path: string }>;
-    zip: Record<string, { openApi: OpenAPIV3.OperationObject & { method: string; path: string }; mcp: NewToolMethod }>;
+    openApiLookup: Record<string, OperationWithMeta>;
+    zip: Record<string, { openApi: OperationWithMeta; mcp: NewToolMethod }>;
   } {
     const apiName = "API";
 
-    const openApiLookup: Record<string, OpenAPIV3.OperationObject & { method: string; path: string }> = {};
+    const openApiLookup: Record<string, OperationWithMeta> = {};
     const tools: Record<string, { methods: NewToolMethod[] }> = {
       [apiName]: { methods: [] },
     };
-    const zip: Record<
-      string,
-      { openApi: OpenAPIV3.OperationObject & { method: string; path: string }; mcp: NewToolMethod }
-    > = {};
+    const zip: Record<string, { openApi: OperationWithMeta; mcp: NewToolMethod }> = {};
     for (const [path, pathItem] of Object.entries(this.openApiSpec.paths || {})) {
       if (!pathItem) continue;
 
@@ -340,8 +405,15 @@ export class OpenAPIToMCPConverter {
           const uniqueName = this.ensureUniqueName(mcpMethod.name).replaceAll("_", "-");
           mcpMethod.name = uniqueName;
           tools[apiName]!.methods.push(mcpMethod);
-          openApiLookup[apiName + "-" + uniqueName] = { ...operation, method, path };
-          zip[apiName + "-" + uniqueName] = { openApi: { ...operation, method, path }, mcp: mcpMethod };
+          // Carry the reverse arg-name map onto the stored operation so the HTTP
+          // client can restore raw property names. Attached only when non-empty,
+          // keeping the stored object byte-identical for specs with legal names.
+          const meta: OperationWithMeta = { ...operation, method, path };
+          if (mcpMethod.argNameMap) {
+            meta.argNameMap = mcpMethod.argNameMap;
+          }
+          openApiLookup[apiName + "-" + uniqueName] = meta;
+          zip[apiName + "-" + uniqueName] = { openApi: meta, mcp: mcpMethod };
         }
       }
     }
@@ -413,6 +485,24 @@ export class OpenAPIToMCPConverter {
     return schema;
   }
   /**
+   * Sanitize an OpenAPI property name into a legal tool-argument key, register
+   * it as used within the current operation, and record the reverse mapping when
+   * the name actually changed. Returns the emitted (possibly renamed) key.
+   */
+  private emitPropertyKey(
+    originalName: string,
+    usedKeys: Set<string>,
+    argNameMap: Record<string, string>,
+  ): string {
+    const key = sanitizePropertyKey(originalName, usedKeys);
+    usedKeys.add(key);
+    if (key !== originalName) {
+      argNameMap[key] = originalName;
+    }
+    return key;
+  }
+
+  /**
    * Helper method to convert an operation to a JSON Schema for parameters
    */
   private convertOperationToJsonSchema(
@@ -426,6 +516,12 @@ export class OpenAPIToMCPConverter {
       required: [],
       $defs: {}, // Omit this.convertComponentsToJsonSchema() to reduce definition size
     };
+
+    // Property keys must satisfy TOOL_ARG_KEY; sanitize them (no-op for legal
+    // names). argNameMap is discarded here — these tool formats are not executed
+    // via HttpClient — but the sanitization keeps the emitted schema valid.
+    const usedKeys = new Set<string>();
+    const argNameMap: Record<string, string> = {};
 
     // Handle parameters (path, query, header, cookie)
     if (operation.parameters) {
@@ -441,9 +537,10 @@ export class OpenAPIToMCPConverter {
           if (paramObj.description) {
             paramSchema.description = paramObj.description;
           }
-          schema.properties![paramObj.name] = paramSchema;
+          const key = this.emitPropertyKey(paramObj.name, usedKeys, argNameMap);
+          schema.properties![key] = paramSchema;
           if (paramObj.required) {
-            schema.required!.push(paramObj.name);
+            schema.required!.push(key);
           }
         }
       }
@@ -459,13 +556,18 @@ export class OpenAPIToMCPConverter {
             new Set(),
           );
           if (bodySchema.type === "object" && bodySchema.properties) {
+            const keyByName: Record<string, string> = {};
             for (const [name, propSchema] of Object.entries(bodySchema.properties)) {
               // TODO: Add support for filters
               if (name === "filters") continue;
-              schema.properties![name] = propSchema;
+              const key = this.emitPropertyKey(name, usedKeys, argNameMap);
+              keyByName[name] = key;
+              schema.properties![key] = propSchema;
             }
             if (bodySchema.required) {
-              schema.required!.push(...bodySchema.required.filter((r) => r !== "filters"));
+              schema.required!.push(
+                ...bodySchema.required.filter((r) => r !== "filters").map((r) => keyByName[r] ?? r),
+              );
             }
           }
         }
@@ -552,6 +654,14 @@ export class OpenAPIToMCPConverter {
       required: [],
     };
 
+    // Property keys are copied from OpenAPI parameter / requestBody property
+    // names, which must satisfy TOOL_ARG_KEY. sanitizePropertyKey is a no-op for
+    // legal names (the whole current spec), so today's schema is unchanged; when
+    // a name is rewritten we record sanitizedKey -> originalName here so the HTTP
+    // client can restore the raw name before the request is issued.
+    const usedKeys = new Set<string>();
+    const argNameMap: Record<string, string> = {};
+
     // Handle parameters (path, query, header, cookie)
     if (operation.parameters) {
       for (const param of operation.parameters) {
@@ -566,9 +676,10 @@ export class OpenAPIToMCPConverter {
           if (paramObj.description) {
             schema.description = paramObj.description;
           }
-          inputSchema.properties![paramObj.name] = schema;
+          const key = this.emitPropertyKey(paramObj.name, usedKeys, argNameMap);
+          inputSchema.properties![key] = schema;
           if (paramObj.required) {
-            inputSchema.required!.push(paramObj.name);
+            inputSchema.required!.push(key);
           }
         }
       }
@@ -588,13 +699,18 @@ export class OpenAPIToMCPConverter {
             true,
           );
           if (formSchema.type === "object" && formSchema.properties) {
+            const keyByName: Record<string, string> = {};
             for (const [name, propSchema] of Object.entries(formSchema.properties)) {
               // TODO: Add support for filters
               if (name === "filters") continue;
-              inputSchema.properties![name] = propSchema;
+              const key = this.emitPropertyKey(name, usedKeys, argNameMap);
+              keyByName[name] = key;
+              inputSchema.properties![key] = propSchema;
             }
             if (formSchema.required) {
-              inputSchema.required!.push(...formSchema.required!.filter((r) => r !== "filters"));
+              inputSchema.required!.push(
+                ...formSchema.required!.filter((r) => r !== "filters").map((r) => keyByName[r] ?? r),
+              );
             }
           }
         }
@@ -607,13 +723,18 @@ export class OpenAPIToMCPConverter {
           );
           // Merge body schema into the inputSchema's properties
           if (bodySchema.type === "object" && bodySchema.properties) {
+            const keyByName: Record<string, string> = {};
             for (const [name, propSchema] of Object.entries(bodySchema.properties)) {
               // TODO: Add support for filters
               if (name === "filters") continue;
-              inputSchema.properties![name] = propSchema;
+              const key = this.emitPropertyKey(name, usedKeys, argNameMap);
+              keyByName[name] = key;
+              inputSchema.properties![key] = propSchema;
             }
             if (bodySchema.required) {
-              inputSchema.required!.push(...bodySchema.required!.filter((r) => r !== "filters"));
+              inputSchema.required!.push(
+                ...bodySchema.required!.filter((r) => r !== "filters").map((r) => keyByName[r] ?? r),
+              );
             }
           } else {
             // If the request body is not an object, just put it under "body"
@@ -643,6 +764,10 @@ export class OpenAPIToMCPConverter {
     // Extract return type (output schema)
     const outputSchema = this.extractResponseType(operation.responses);
 
+    // Only surface argNameMap when at least one key was renamed, so the emitted
+    // method stays byte-identical for specs whose names are already legal.
+    const argNameMapEntry = Object.keys(argNameMap).length > 0 ? { argNameMap } : {};
+
     // Generate Zod schema from input schema
     try {
       // const zodSchemaStr = jsonSchemaToZod(inputSchema, { module: "cjs" })
@@ -655,6 +780,7 @@ export class OpenAPIToMCPConverter {
         description,
         inputSchema,
         ...(outputSchema ? { outputSchema } : {}),
+        ...argNameMapEntry,
       };
     } catch (error) {
       console.warn(`Failed to generate Zod schema for ${methodName}:`, error);
@@ -664,6 +790,7 @@ export class OpenAPIToMCPConverter {
         description,
         inputSchema,
         ...(outputSchema ? { outputSchema } : {}),
+        ...argNameMapEntry,
       };
     }
   }
