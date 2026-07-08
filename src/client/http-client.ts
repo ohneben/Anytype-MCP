@@ -108,9 +108,30 @@ export class HttpClient {
    * Execute an OpenAPI operation
    */
   async executeOperation<T = any>(
-    operation: OpenAPIV3.OperationObject & { method: string; path: string },
+    operation: OpenAPIV3.OperationObject & {
+      method: string;
+      path: string;
+      // sanitizedKey -> raw OpenAPI name, present only when a tool argument key
+      // had to be rewritten to satisfy the Anthropic schema-key pattern.
+      argNameMap?: Record<string, string>;
+    },
     params: Record<string, any> = {},
   ): Promise<HttpClientResponse<T>> {
+    // Reverse the property-key sanitization applied when the OpenAPI spec was
+    // converted to MCP tools. The path/query/body wiring below keys off the RAW
+    // OpenAPI names, so restore them before doing anything else. For the current
+    // (clean) spec argNameMap is absent, making this a strict no-op.
+    if (operation.argNameMap) {
+      const renamed: Record<string, any> = { ...params };
+      for (const [sanitized, original] of Object.entries(operation.argNameMap)) {
+        if (Object.prototype.hasOwnProperty.call(renamed, sanitized)) {
+          renamed[original] = renamed[sanitized];
+          delete renamed[sanitized];
+        }
+      }
+      params = renamed;
+    }
+
     const api = await this.api;
     const operationId = operation.operationId;
     if (!operationId) {
