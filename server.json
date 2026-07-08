@@ -7,13 +7,13 @@
     "url": "https://github.com/ohneben/Anytype-MCP",
     "source": "github"
   },
-  "version": "1.0.1",
+  "version": "1.0.2",
   "packages": [
     {
       "registry_type": "oci",
       "registry_base_url": "https://ghcr.io",
       "identifier": "ohneben/anytype-mcp",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "transport": {
         "type": "streamable-http"
       },
