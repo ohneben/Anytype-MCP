@@ -127,6 +127,212 @@ describe("MCPProxy", () => {
     });
   });
 
+  describe("response slimming", () => {
+    const verboseObjectList = {
+      data: [
+        {
+          object: "object",
+          id: "obj-1",
+          name: "Doc",
+          icon: null,
+          archived: false,
+          type: {
+            object: "type",
+            id: "type-1",
+            key: "page",
+            name: "Page",
+            properties: [{ object: "property", id: "p-1", key: "tag", name: "Tag", format: "multi_select" }],
+          },
+          properties: [
+            { object: "property", id: "p-2", key: "description", name: "Description", format: "text", text: "hi" },
+            { object: "property", id: "p-3", key: "due", name: "Due", format: "date", date: null },
+          ],
+        },
+      ],
+    };
+
+    const setupLookup = () => {
+      (proxy as any).openApiLookup = {
+        "API-getTest": {
+          operationId: "getTest",
+          responses: { "200": { description: "Success" } },
+          method: "get",
+          path: "/test",
+        },
+      };
+    };
+
+    it("slims verbose payloads by default", async () => {
+      (HttpClient.prototype.executeOperation as ReturnType<typeof vi.fn>).mockResolvedValue({
+        data: verboseObjectList,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+      });
+      setupLookup();
+
+      const [, callToolHandler] = getHandlers(proxy);
+      const result = await callToolHandler({ params: { name: "API-getTest", arguments: {} } });
+      const payload = JSON.parse(result.content[0].text);
+
+      expect(payload.data[0].type).toEqual({ id: "type-1", key: "page", name: "Page" });
+      expect(payload.data[0].properties).toEqual([
+        { key: "description", name: "Description", format: "text", text: "hi" },
+      ]);
+      expect(payload.data[0].icon).toBeUndefined();
+      expect(payload.data[0].object).toBeUndefined();
+    });
+
+    it("returns raw payloads when slimming is disabled", async () => {
+      process.env.ANYTYPE_MCP_SLIM_RESPONSES = "false";
+      try {
+        (HttpClient.prototype.executeOperation as ReturnType<typeof vi.fn>).mockResolvedValue({
+          data: verboseObjectList,
+          status: 200,
+          headers: new Headers({ "content-type": "application/json" }),
+        });
+        setupLookup();
+
+        const [, callToolHandler] = getHandlers(proxy);
+        const result = await callToolHandler({ params: { name: "API-getTest", arguments: {} } });
+        expect(JSON.parse(result.content[0].text)).toEqual(verboseObjectList);
+      } finally {
+        delete process.env.ANYTYPE_MCP_SLIM_RESPONSES;
+      }
+    });
+  });
+
+  describe("overview tool", () => {
+    const anytypeLikeLookup = () => ({
+      "API-list-spaces": {
+        operationId: "list_spaces",
+        responses: { "200": { description: "Success" } },
+        method: "get",
+        path: "/v1/spaces",
+      },
+      "API-list-types": {
+        operationId: "list_types",
+        responses: { "200": { description: "Success" } },
+        method: "get",
+        path: "/v1/spaces/{space_id}/types",
+      },
+      "API-list-properties": {
+        operationId: "list_properties",
+        responses: { "200": { description: "Success" } },
+        method: "get",
+        path: "/v1/spaces/{space_id}/properties",
+      },
+    });
+
+    it("is listed when the spec has spaces and types endpoints", async () => {
+      (proxy as any).openApiLookup = anytypeLikeLookup();
+      (proxy as any).tools = { API: { methods: [] } };
+
+      const [listToolsHandler] = getHandlers(proxy);
+      const result = await listToolsHandler();
+      const overview = result.tools.find((t: any) => t.name === "API-get-overview");
+
+      expect(overview).toBeDefined();
+      expect(overview.annotations).toEqual({ readOnlyHint: true, destructiveHint: false });
+    });
+
+    it("is not listed for specs without those endpoints", async () => {
+      const [listToolsHandler] = getHandlers(proxy);
+      const result = await listToolsHandler();
+      expect(result.tools.find((t: any) => t.name === "API-get-overview")).toBeUndefined();
+    });
+
+    it("aggregates spaces with their types in one call", async () => {
+      (proxy as any).openApiLookup = anytypeLikeLookup();
+      (HttpClient.prototype.executeOperation as ReturnType<typeof vi.fn>).mockImplementation(
+        async (operation: any) => {
+          if (operation.operationId === "list_spaces") {
+            return {
+              data: { data: [{ id: "space-1", name: "Wiki", object: "space" }] },
+              status: 200,
+              headers: new Headers(),
+            };
+          }
+          return {
+            data: { data: [{ id: "type-1", key: "page", name: "Page", layout: "basic", properties: [] }] },
+            status: 200,
+            headers: new Headers(),
+          };
+        },
+      );
+
+      const [, callToolHandler] = getHandlers(proxy);
+      const result = await callToolHandler({ params: { name: "API-get-overview", arguments: {} } });
+      const payload = JSON.parse(result.content[0].text);
+
+      expect(payload.spaces).toEqual([
+        { id: "space-1", name: "Wiki", types: [{ key: "page", name: "Page", layout: "basic" }] },
+      ]);
+    });
+
+    it("returns space detail with property keys when given a space_id", async () => {
+      (proxy as any).openApiLookup = anytypeLikeLookup();
+      (HttpClient.prototype.executeOperation as ReturnType<typeof vi.fn>).mockImplementation(
+        async (operation: any, params: any) => {
+          expect(params.space_id).toBe("space-1");
+          if (operation.operationId === "list_types") {
+            return {
+              data: {
+                data: [
+                  {
+                    id: "type-1",
+                    key: "task",
+                    name: "Task",
+                    layout: "action",
+                    properties: [{ id: "p-1", key: "done", name: "Done", format: "checkbox" }],
+                  },
+                ],
+              },
+              status: 200,
+              headers: new Headers(),
+            };
+          }
+          return {
+            data: { data: [{ id: "p-1", key: "done", name: "Done", format: "checkbox" }] },
+            status: 200,
+            headers: new Headers(),
+          };
+        },
+      );
+
+      const [, callToolHandler] = getHandlers(proxy);
+      const result = await callToolHandler({
+        params: { name: "API-get-overview", arguments: { space_id: "space-1" } },
+      });
+      const payload = JSON.parse(result.content[0].text);
+
+      expect(payload.space_id).toBe("space-1");
+      expect(payload.types[0]).toEqual({ key: "task", name: "Task", layout: "action", property_keys: ["done"] });
+      expect(payload.properties).toEqual([{ id: "p-1", key: "done", name: "Done", format: "checkbox" }]);
+    });
+
+    it("still returns spaces when a per-space types call fails", async () => {
+      (proxy as any).openApiLookup = anytypeLikeLookup();
+      (HttpClient.prototype.executeOperation as ReturnType<typeof vi.fn>).mockImplementation(
+        async (operation: any) => {
+          if (operation.operationId === "list_spaces") {
+            return {
+              data: { data: [{ id: "space-1", name: "Wiki" }] },
+              status: 200,
+              headers: new Headers(),
+            };
+          }
+          throw new Error("types unavailable");
+        },
+      );
+
+      const [, callToolHandler] = getHandlers(proxy);
+      const result = await callToolHandler({ params: { name: "API-get-overview", arguments: {} } });
+      const payload = JSON.parse(result.content[0].text);
+
+      expect(payload.spaces).toEqual([{ id: "space-1", name: "Wiki" }]);
+    });
+  });
+
   describe("getContentType", () => {
     it("should return correct content type for different headers", () => {
       const getContentType = (proxy as any).getContentType.bind(proxy);

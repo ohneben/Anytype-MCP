@@ -52,6 +52,21 @@ Once it's connected, ask your assistant things like:
 Tools are generated automatically from your running Anytype app and grouped into
 🟢 read-only, 🟡 write, and 🔴 delete.
 
+The server is tuned to keep your assistant fast and frugal with tool calls:
+
+- **`API-get-overview`** — a synthesized tool that returns all spaces with their
+  types (or, given a `space_id`, that space's types and property definitions) in
+  a single call, instead of a list-spaces → list-types → list-properties cascade.
+- **Slim responses** — API payloads are compacted before they reach the
+  assistant: empty property values, `object` discriminators, and nulls are
+  dropped, and the type embedded in each search/list result is reduced to its
+  identifiers. This typically shrinks list/search responses by well over half,
+  which means less context burned per call and fewer follow-up calls. Set
+  `ANYTYPE_MCP_SLIM_RESPONSES=false` to get raw API payloads instead.
+- **Routing hints** — tool descriptions tell the assistant which tool is
+  cheapest for a job (e.g. search instead of paginating lists, and that only
+  `get-object` returns the full markdown body).
+
 ## How it works
 
 ```
@@ -117,6 +132,7 @@ Everything is set in `.env` (copied from `.env.example`):
 | `ANYTYPE_API_BASE_URL` | `http://host.docker.internal:31009` | Where the Anytype app's API is reachable from the container. |
 | `PORT` | `8769` | Host port for the MCP endpoint. |
 | `MCP_SHARED_TOKEN` | *(empty)* | Optional bearer token to protect the endpoint. Empty = open, for localhost only. |
+| `ANYTYPE_MCP_SLIM_RESPONSES` | `true` | Compact API responses before sending them to the assistant. Set to `false` for raw payloads. |
 
 After changing `.env`, reload with `docker compose up -d --force-recreate`.
 
