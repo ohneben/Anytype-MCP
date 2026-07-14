@@ -19,6 +19,8 @@ services:
       # Optional shared bearer token the Claude connector must send.
       # Empty = open, intended for localhost-only use.
       MCP_SHARED_TOKEN: ${MCP_SHARED_TOKEN:-}
+      # Compact API responses before sending them to the assistant.
+      ANYTYPE_MCP_SLIM_RESPONSES: ${ANYTYPE_MCP_SLIM_RESPONSES:-true}
     env_file:
       - .env
     extra_hosts:
