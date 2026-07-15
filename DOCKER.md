@@ -58,20 +58,48 @@ Put the `api_key` in `.env` as `ANYTYPE_API_KEY=`, then
 **Anytype → Settings → API Keys**.
 
 ## Register with Claude
-Add this to your Claude config — `~/.claude.json` for Claude Code, and
+Add an `anytype` entry under `mcpServers`, then fully quit & reopen Claude to
+load it. The config path is `~/.claude.json` for Claude Code and
 `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) for
-Claude Desktop — under `mcpServers`:
+Claude Desktop — but the two clients want different transports.
+
+**Claude Code** speaks Streamable-HTTP natively, so point it straight at the
+endpoint (no bridge process):
 ```json
 "anytype": {
-  "command": "npx",
-  "args": ["-y", "mcp-remote", "http://localhost:8769/mcp", "--allow-http"]
+  "type": "http",
+  "url": "http://localhost:8769/mcp"
 }
 ```
-Then fully quit & reopen Claude to load it. If Claude can't find `npx` (GUI apps
-don't inherit your shell PATH), use its absolute path — on macOS + Homebrew that's
-`/opt/homebrew/bin/npx`. To expose the endpoint beyond localhost, set
-`MCP_SHARED_TOKEN` in `.env` and append `?token=<token>` to the URL (or send it as
-a Bearer header).
+
+**Claude Desktop** only supports stdio servers in its JSON config, so it needs
+the `mcp-remote` bridge. Install it once and launch it with `node`:
+```bash
+npm i -g mcp-remote
+```
+```json
+"anytype": {
+  "command": "/opt/homebrew/bin/node",
+  "args": [
+    "/opt/homebrew/lib/node_modules/mcp-remote/dist/proxy.js",
+    "http://localhost:8769/mcp",
+    "--allow-http"
+  ]
+}
+```
+
+> **Don't launch the bridge with `npx -y mcp-remote …`.** `npx` re-resolves the
+> package through the npm cache on every start; when a client boots several MCP
+> servers at once they contend on that cache and some can hang *inside npx* for
+> minutes, surfacing as a ~4-minute connection timeout with a perfectly healthy
+> server. Pre-installing `mcp-remote` and invoking `node` directly avoids it.
+> Use **absolute** paths: GUI apps don't inherit your shell `PATH`, and calling the
+> bare `mcp-remote` binary fails because its `#!/usr/bin/env node` shebang can't find
+> `node`. The paths shown are Apple-Silicon Homebrew defaults — check yours with
+> `which node` and `npm root -g` (Intel Homebrew uses `/usr/local/...`).
+
+To expose the endpoint beyond localhost, set `MCP_SHARED_TOKEN` in `.env` and
+append `?token=<token>` to the URL (or send it as a Bearer header).
 
 ## Verify
 ```bash
