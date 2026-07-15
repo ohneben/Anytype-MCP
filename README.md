@@ -25,7 +25,7 @@ number of MCP clients can reach over HTTP.
 | --- | :---: | :---: | :---: |
 | Full Anytype API coverage (dynamic OpenAPI → MCP tools) | ✅ | ✅ | ✅ |
 | `stdio` transport | ✅ | ✅ | ✅ |
-| **Streamable-HTTP transport** (via `mcp-remote`) | ✅ | ❌ | ❌ |
+| **Streamable-HTTP transport** (native, or via `mcp-remote`) | ✅ | ❌ | ❌ |
 | **Always-on background service** | ✅ | ❌ | ❌ |
 | **One server → many clients at once** | ✅ | ❌ | ❌ |
 | **Docker + docker-compose** | ✅ | ❌ | ❌ |
@@ -103,15 +103,45 @@ docker compose up -d --build
 curl -s http://localhost:8769/healthz     # → {"status":"ok"}
 ```
 
-**4. Connect your MCP client.** Add this under `mcpServers` in your client
-config (e.g. Claude Desktop or Claude Code), then fully quit and reopen the app:
+**4. Connect your MCP client.** Add an `anytype` entry under `mcpServers`, then
+fully quit and reopen the app. Pick the form that matches your client:
+
+**Claude Code** (or any client that speaks Streamable-HTTP natively) — connect
+directly, no helper process:
 
 ```json
 "anytype": {
-  "command": "npx",
-  "args": ["-y", "mcp-remote", "http://localhost:8769/mcp", "--allow-http"]
+  "type": "http",
+  "url": "http://localhost:8769/mcp"
 }
 ```
+
+**Claude Desktop** (its config is stdio-only) needs the `mcp-remote` bridge.
+Install it once, then launch it via `node` rather than `npx`:
+
+```bash
+npm i -g mcp-remote
+```
+
+```json
+"anytype": {
+  "command": "/opt/homebrew/bin/node",
+  "args": [
+    "/opt/homebrew/lib/node_modules/mcp-remote/dist/proxy.js",
+    "http://localhost:8769/mcp",
+    "--allow-http"
+  ]
+}
+```
+
+> **Why not `npx -y mcp-remote …`?** `npx` re-resolves the package through the npm
+> cache on every launch. When a client cold-starts several MCP servers at once they
+> contend on that cache, and some launchers can wedge *inside npx* for minutes —
+> which the client reports as a connection timeout. Installing `mcp-remote` once and
+> launching it with `node` removes that step. Use absolute paths (GUI apps don't
+> inherit your shell `PATH`, and `mcp-remote`'s own `#!/usr/bin/env node` shebang
+> can't find `node` otherwise). The paths above are Apple-Silicon Homebrew defaults;
+> adjust with `which node` and `npm root -g` if yours differ.
 
 That's it — ask your assistant to search or create something in Anytype.
 
