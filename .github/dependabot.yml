@@ -11,6 +11,14 @@ updates:
         dependency-type: production
       development-dependencies:
         dependency-type: development
+    ignore:
+      # TypeScript 7 cannot be installed alongside typescript-eslint, which
+      # still declares `peer typescript ">=4.8.4 <6.1.0"` as of 8.69.0. The
+      # pair fails to resolve with ERESOLVE and breaks `npm ci`, so a grouped
+      # PR carrying it can never merge. Drop this entry once typescript-eslint
+      # widens that peer range to accept 7.x.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
 
   # GitHub Actions used in the workflows above
   - package-ecosystem: github-actions
