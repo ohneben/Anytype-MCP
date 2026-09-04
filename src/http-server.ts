@@ -27,7 +27,7 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import axios from "axios";
 import { OpenAPIV3 } from "openapi-types";
 import { MCPProxy } from "./mcp/proxy";
-import { getDefaultSpecUrl } from "./utils/base-url";
+import { getDefaultSpecUrl, getHostHeaderOverride } from "./utils/base-url";
 
 const PORT = parseInt(process.env.PORT || "8769", 10);
 const SHARED_TOKEN = process.env.MCP_SHARED_TOKEN || "";
@@ -50,7 +50,11 @@ let specPromise: Promise<OpenAPIV3.Document> | null = null;
 
 async function fetchSpec(): Promise<OpenAPIV3.Document> {
   const url = getDefaultSpecUrl();
-  const res = await axios.get(url, { timeout: 10_000 });
+  const hostHeader = getHostHeaderOverride();
+  const res = await axios.get(url, {
+    timeout: 10_000,
+    headers: hostHeader ? { Host: hostHeader } : undefined,
+  });
   return (typeof res.data === "string" ? JSON.parse(res.data) : res.data) as OpenAPIV3.Document;
 }
 

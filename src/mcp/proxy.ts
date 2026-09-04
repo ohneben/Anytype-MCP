@@ -6,7 +6,7 @@ import { Headers } from "node-fetch";
 import { OpenAPIV3 } from "openapi-types";
 import { HttpClient, HttpClientError } from "../client/http-client";
 import { OpenAPIToMCPConverter, OperationWithMeta } from "../openapi/parser";
-import { determineBaseUrl } from "../utils/base-url";
+import { determineBaseUrl, getHostHeaderOverride } from "../utils/base-url";
 import { isSlimEnabled, slimResponse } from "./slim";
 
 type PathItemObject = OpenAPIV3.PathItemObject & {
@@ -85,10 +85,14 @@ export class MCPProxy {
       { capabilities: { tools: {} }, instructions: ANYTYPE_INSTRUCTIONS },
     );
     const baseUrl = determineBaseUrl(openApiSpec);
+    const hostHeader = getHostHeaderOverride(baseUrl);
     this.httpClient = new HttpClient(
       {
         baseUrl,
-        headers: this.parseHeadersFromEnv(),
+        headers: {
+          ...this.parseHeadersFromEnv(),
+          ...(hostHeader ? { Host: hostHeader } : {}),
+        },
       },
       openApiSpec,
     );

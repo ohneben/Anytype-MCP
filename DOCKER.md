@@ -6,7 +6,9 @@ runs as a Docker container and is reachable by any MCP client via `mcp-remote`.
 
 - **Endpoint:** `http://localhost:8769/mcp`  ·  **Health:** `http://localhost:8769/healthz`
 - **Talks to:** the Anytype **desktop app's** local API at `127.0.0.1:31009` on the
-  host, reached from the container via `host.docker.internal:31009`.
+  host, reached from the container via `host.docker.internal:31009`. Anytype only
+  accepts loopback `Host` headers, so requests go out as `Host: localhost:31009`
+  (override with `ANYTYPE_API_HOST_HEADER`).
 - **Tools:** generated dynamically from the *running* Anytype's OpenAPI spec, each
   tagged 🟢 READ-ONLY / 🟡 WRITE / 🔴 DESTRUCTIVE and annotated with
   `readOnlyHint`/`destructiveHint` so Claude groups them into Read-only vs

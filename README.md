@@ -130,6 +130,7 @@ Everything is set in `.env` (copied from `.env.example`):
 | `ANYTYPE_API_KEY` | — | Your Anytype API key. **Required.** |
 | `ANYTYPE_VERSION` | `2025-11-08` | Anytype API version header. |
 | `ANYTYPE_API_BASE_URL` | `http://host.docker.internal:31009` | Where the Anytype app's API is reachable from the container. |
+| `ANYTYPE_API_HOST_HEADER` | *(auto)* | `Host` header sent to the Anytype API. Auto-set to `localhost:<port>` when the base URL uses a container host alias, because Anytype rejects any other `Host` with `403 request origin is not allowed`. |
 | `PORT` | `8769` | Host port for the MCP endpoint. |
 | `MCP_SHARED_TOKEN` | *(empty)* | Optional bearer token to protect the endpoint. Empty = open, for localhost only. |
 | `ANYTYPE_MCP_SLIM_RESPONSES` | `true` | Compact API responses before sending them to the assistant. Set to `false` for raw payloads. |
