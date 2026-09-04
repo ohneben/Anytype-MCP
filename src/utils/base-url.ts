@@ -65,3 +65,42 @@ export function getDefaultSpecUrl(): string {
   }
   return "http://127.0.0.1:31009/docs/openapi.json";
 }
+
+/**
+ * Hostnames that route to the host machine from inside a container. Anytype
+ * only accepts loopback Host headers and answers anything else with
+ * 403 "request origin is not allowed", so requests routed through one of these
+ * still have to present themselves as localhost.
+ */
+const CONTAINER_HOST_ALIASES = new Set([
+  "host.docker.internal",
+  "gateway.docker.internal",
+  "host.containers.internal",
+  "host.lima.internal",
+]);
+
+/**
+ * Gets the Host header to send with Anytype API requests, or null to leave the
+ * header to the HTTP client. ANYTYPE_API_HOST_HEADER overrides the mapping.
+ */
+export function getHostHeaderOverride(baseUrl?: string | null): string | null {
+  const override = process.env.ANYTYPE_API_HOST_HEADER;
+  if (override) {
+    return override;
+  }
+
+  const target = baseUrl ?? parseBaseUrlFromEnv();
+  if (!target) {
+    return null;
+  }
+
+  try {
+    const url = new URL(target);
+    if (!CONTAINER_HOST_ALIASES.has(url.hostname)) {
+      return null;
+    }
+    return url.port ? `localhost:${url.port}` : "localhost";
+  } catch {
+    return null;
+  }
+}

@@ -1,6 +1,6 @@
 import { OpenAPIV3 } from "openapi-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { determineBaseUrl, getDefaultSpecUrl, parseBaseUrlFromEnv } from "../base-url";
+import { determineBaseUrl, getDefaultSpecUrl, getHostHeaderOverride, parseBaseUrlFromEnv } from "../base-url";
 
 describe("base-url utilities", () => {
   const originalEnv = process.env;
@@ -131,6 +131,41 @@ describe("base-url utilities", () => {
     it("should return default URL when env var is invalid", () => {
       process.env.ANYTYPE_API_BASE_URL = "invalid-url";
       expect(getDefaultSpecUrl()).toBe("http://127.0.0.1:31009/docs/openapi.json");
+    });
+  });
+
+  describe("getHostHeaderOverride", () => {
+    it("should map container host aliases to localhost with the same port", () => {
+      process.env.ANYTYPE_API_BASE_URL = "http://host.docker.internal:31009";
+      expect(getHostHeaderOverride()).toBe("localhost:31009");
+    });
+
+    it("should map other container host aliases too", () => {
+      expect(getHostHeaderOverride("http://host.containers.internal:31009")).toBe("localhost:31009");
+      expect(getHostHeaderOverride("http://host.lima.internal:31009")).toBe("localhost:31009");
+    });
+
+    it("should return null for loopback hosts", () => {
+      expect(getHostHeaderOverride("http://127.0.0.1:31009")).toBeNull();
+      expect(getHostHeaderOverride("http://localhost:31009")).toBeNull();
+    });
+
+    it("should return null for unrelated hosts", () => {
+      expect(getHostHeaderOverride("https://api.example.com")).toBeNull();
+    });
+
+    it("should return null when no base URL is configured", () => {
+      delete process.env.ANYTYPE_API_BASE_URL;
+      expect(getHostHeaderOverride()).toBeNull();
+    });
+
+    it("should prefer ANYTYPE_API_HOST_HEADER when set", () => {
+      process.env.ANYTYPE_API_HOST_HEADER = "127.0.0.1:31009";
+      expect(getHostHeaderOverride("https://api.example.com")).toBe("127.0.0.1:31009");
+    });
+
+    it("should return null for an invalid base URL", () => {
+      expect(getHostHeaderOverride("not-a-url")).toBeNull();
     });
   });
 });
