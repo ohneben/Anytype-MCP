@@ -1,5 +1,7 @@
 # ohneben Anytype MCP
 
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ohneben-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/ohneben)
+
 [![CI](https://github.com/ohneben/Anytype-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/ohneben/Anytype-MCP/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE.md)
 
