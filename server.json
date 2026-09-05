@@ -8,11 +8,11 @@
     "url": "https://github.com/ohneben/Anytype-MCP",
     "source": "github"
   },
-  "version": "1.0.4",
+  "version": "1.0.5",
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/ohneben/anytype-mcp:1.0.4",
+      "identifier": "ghcr.io/ohneben/anytype-mcp:1.0.5",
       "runtimeHint": "docker",
       "transport": {
         "type": "streamable-http",
