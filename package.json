@@ -56,7 +56,11 @@
   "description": "Self-hosted Anytype MCP server (Docker + Streamable HTTP). Fork of anyproto/anytype-mcp.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/anyproto/anytype-mcp.git"
+    "url": "https://github.com/ohneben/Anytype-MCP.git"
+  },
+  "homepage": "https://github.com/ohneben/Anytype-MCP#readme",
+  "bugs": {
+    "url": "https://github.com/ohneben/Anytype-MCP/issues"
   },
   "author": "@anyproto"
 }
