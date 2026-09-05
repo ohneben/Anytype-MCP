@@ -67,6 +67,12 @@ const TOOL_HINTS: Record<string, string> = {
 
 const OVERVIEW_TOOL_NAME = "API-get-overview";
 
+import pkg from "../../package.json";
+
+// Reported to MCP clients as Implementation.version, and mirrored by
+// "version" in server.json for the MCP Registry listing.
+const SERVER_VERSION = pkg.version;
+
 const OVERVIEW_TOOL_DESCRIPTION =
   "🟢 READ-ONLY. One-call workspace orientation — call this FIRST instead of separate list-spaces/list-types/list-properties calls. " +
   "Without arguments: returns all spaces, each with its object types (key, name, layout). " +
@@ -81,7 +87,7 @@ export class MCPProxy {
 
   constructor(name: string, openApiSpec: OpenAPIV3.Document) {
     this.server = new Server(
-      { name, version: "1.0.0" },
+      { name, version: SERVER_VERSION },
       { capabilities: { tools: {} }, instructions: ANYTYPE_INSTRUCTIONS },
     );
     const baseUrl = determineBaseUrl(openApiSpec);

@@ -66,13 +66,24 @@ jobs:
       # input, or whatever server.json already carries.
       - name: Resolve version
         id: version
+        # Inputs go through the environment, never string-interpolated into the
+        # script: this job holds an OIDC token good for the whole
+        # io.github.ohneben/* namespace.
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
             version="${GITHUB_REF_NAME#v}"
-          elif [ -n "${{ inputs.version }}" ]; then
-            version="${{ inputs.version }}"
+          elif [ -n "$INPUT_VERSION" ]; then
+            version="$INPUT_VERSION"
           else
             version="$(jq -r .version server.json)"
+          fi
+          # The version becomes an image tag and lands in server.json, so it has
+          # to be a plain semver-ish string.
+          if ! printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+            echo "::error::Refusing to publish malformed version '$version'."
+            exit 1
           fi
           echo "Publishing version $version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
