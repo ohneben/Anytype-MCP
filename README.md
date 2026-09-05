@@ -193,6 +193,24 @@ stdio configuration.
   it beyond your machine, set `MCP_SHARED_TOKEN` and send it as a `Bearer` header
   or `?token=…`.
 
+## MCP Registry
+
+This server publishes to the official
+[MCP Registry](https://registry.modelcontextprotocol.io) under the name
+`io.github.ohneben/anytype-mcp`. To look up the current listing:
+
+```bash
+curl "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.ohneben/anytype-mcp"
+```
+
+Its listing is described by [`server.json`](./server.json) and is republished
+automatically on every `v*.*.*` tag by
+[`.github/workflows/publish-mcp.yml`](./.github/workflows/publish-mcp.yml),
+which stamps the tag into `server.json`, waits for the matching GHCR image, and
+authenticates with GitHub OIDC (no secret needed). The registry proves the image
+is ours via the `io.modelcontextprotocol.server.name` label in the
+[Dockerfile](./Dockerfile), so **the GHCR package must stay Public**.
+
 ## Credits & license
 
 Built on the official

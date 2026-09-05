@@ -1,42 +1,81 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.ohneben/anytype-mcp",
-  "description": "Self-hosted Anytype MCP server (Docker + Streamable HTTP).",
-  "status": "active",
+  "title": "Anytype (self-hosted HTTP)",
+  "description": "Self-hosted Anytype MCP server: the full Anytype API as an always-on Docker + HTTP endpoint.",
+  "websiteUrl": "https://github.com/ohneben/Anytype-MCP#readme",
   "repository": {
     "url": "https://github.com/ohneben/Anytype-MCP",
     "source": "github"
   },
-  "version": "1.0.2",
+  "version": "1.0.4",
   "packages": [
     {
-      "registry_type": "oci",
-      "registry_base_url": "https://ghcr.io",
-      "identifier": "ohneben/anytype-mcp",
-      "version": "1.0.2",
+      "registryType": "oci",
+      "identifier": "ghcr.io/ohneben/anytype-mcp:1.0.4",
+      "runtimeHint": "docker",
       "transport": {
-        "type": "streamable-http"
+        "type": "streamable-http",
+        "url": "http://localhost:{PORT}/mcp"
       },
-      "environment_variables": [
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "-p",
+          "value": "{PORT}:{PORT}",
+          "description": "Publish the MCP endpoint on the host.",
+          "isRequired": true
+        },
+        {
+          "type": "named",
+          "name": "--add-host",
+          "value": "host.docker.internal:host-gateway",
+          "description": "Let the container reach the Anytype desktop app on the host. Required on Linux, harmless on macOS and Windows.",
+          "isRequired": true
+        }
+      ],
+      "environmentVariables": [
         {
           "name": "ANYTYPE_API_KEY",
-          "description": "Your Anytype API key (Anytype -> Settings -> API Keys).",
-          "is_required": true,
-          "is_secret": true,
+          "description": "Anytype API key, created in the desktop app under Settings -> API Keys.",
+          "isRequired": true,
+          "isSecret": true,
           "format": "string"
         },
         {
+          "name": "PORT",
+          "description": "Port the MCP endpoint listens on, inside the container and on the host.",
+          "default": "8769",
+          "format": "number"
+        },
+        {
           "name": "ANYTYPE_API_BASE_URL",
-          "description": "Where the Anytype desktop API is reachable from the container. Default: http://host.docker.internal:31009",
-          "is_required": false,
+          "description": "Where the Anytype desktop API is reachable from inside the container.",
+          "default": "http://host.docker.internal:31009",
+          "format": "string"
+        },
+        {
+          "name": "ANYTYPE_VERSION",
+          "description": "Anytype API version header sent with every request.",
+          "default": "2025-11-08",
+          "format": "string"
+        },
+        {
+          "name": "ANYTYPE_API_HOST_HEADER",
+          "description": "Override the Host header sent to the Anytype API. Auto-derived when unset; Anytype rejects non-loopback hosts with 403.",
           "format": "string"
         },
         {
           "name": "MCP_SHARED_TOKEN",
-          "description": "Optional bearer token required on the /mcp endpoint. Empty = open (localhost only).",
-          "is_required": false,
-          "is_secret": true,
+          "description": "Optional bearer token required on the /mcp endpoint. Empty means open, for localhost only.",
+          "isSecret": true,
           "format": "string"
+        },
+        {
+          "name": "ANYTYPE_MCP_SLIM_RESPONSES",
+          "description": "Compact API responses before returning them to the client. Set to false for raw payloads.",
+          "default": "true",
+          "format": "boolean"
         }
       ]
     }

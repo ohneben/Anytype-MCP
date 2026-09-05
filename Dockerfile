@@ -6,6 +6,9 @@
 # (configured in docker-compose.yml).
 FROM node:24-alpine
 
+# Proves ownership of this image to the MCP Registry; must match "name" in server.json.
+LABEL io.modelcontextprotocol.server.name="io.github.ohneben/anytype-mcp"
+
 WORKDIR /app
 
 # Install dependencies first for better layer caching. tsx (a devDependency)
