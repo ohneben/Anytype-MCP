@@ -1,0 +1,125 @@
+name: Publish to MCP Registry
+
+# Publishes server.json to the official MCP Registry
+# (https://registry.modelcontextprotocol.io) whenever a version tag (v*.*.*) is
+# pushed, so the server is listed alongside the container image.
+#
+# Authentication uses GitHub Actions OIDC, which grants the `io.github.ohneben/*`
+# namespace. No secret is required.
+#
+# Ownership of the container image is proven by the
+# `io.modelcontextprotocol.server.name` label baked into the image (see
+# Dockerfile). The registry pulls the image anonymously to check it, so the GHCR
+# package must be Public.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  pull_request:
+    paths:
+      - server.json
+      - .github/workflows/publish-mcp.yml
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (without the leading "v"). Defaults to the version in server.json.'
+        required: false
+        type: string
+
+concurrency:
+  group: publish-mcp-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Guards against a server.json that the registry would reject. Runs on pull
+  # requests so schema drift is caught before a release, not during one.
+  validate:
+    name: validate server.json
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
+            | tar xz mcp-publisher
+
+      - name: Validate
+        run: ./mcp-publisher validate
+
+  publish:
+    name: publish to registry
+    needs: validate
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      id-token: write # required for OIDC authentication
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      # A tag push publishes that tag's version; a manual run publishes the
+      # input, or whatever server.json already carries.
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          elif [ -n "${{ inputs.version }}" ]; then
+            version="${{ inputs.version }}"
+          else
+            version="$(jq -r .version server.json)"
+          fi
+          echo "Publishing version $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Keeps server.json in step with the tag, so the two cannot drift apart.
+      - name: Stamp version into server.json
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          jq --arg v "$VERSION" '
+            .version = $v
+            | .packages |= map(
+                if .registryType == "oci"
+                then .identifier |= sub(":[^:/]+$"; ":" + $v)
+                else . end)
+          ' server.json > server.json.tmp && mv server.json.tmp server.json
+          cat server.json
+
+      # The registry pulls the image to verify ownership, so it has to exist
+      # first. The image is built by docker-publish.yml on the same tag, which
+      # runs concurrently with this workflow.
+      - name: Wait for the container image to be published
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          image="$(echo "${{ github.repository_owner }}/anytype-mcp" | tr '[:upper:]' '[:lower:]')"
+          accept='application/vnd.oci.image.index.v1+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json,application/vnd.docker.distribution.manifest.list.v2+json'
+          for attempt in $(seq 1 40); do
+            token="$(curl -fsS "https://ghcr.io/token?scope=repository:${image}:pull&service=ghcr.io" | jq -r .token)"
+            if curl -fsS -o /dev/null -H "Authorization: Bearer ${token}" -H "Accept: ${accept}" \
+                 "https://ghcr.io/v2/${image}/manifests/${VERSION}"; then
+              echo "ghcr.io/${image}:${VERSION} is available."
+              exit 0
+            fi
+            echo "Attempt ${attempt}/40: ghcr.io/${image}:${VERSION} not published yet, retrying in 30s..."
+            sleep 30
+          done
+          echo "::error::ghcr.io/${image}:${VERSION} never became publicly pullable. Check docker-publish.yml and that the GHCR package is Public."
+          exit 1
+
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
+            | tar xz mcp-publisher
+
+      - name: Authenticate to the MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish
+        run: ./mcp-publisher publish
