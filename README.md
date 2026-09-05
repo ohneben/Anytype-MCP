@@ -206,10 +206,19 @@ curl "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.ohneb
 Its listing is described by [`server.json`](./server.json) and is republished
 automatically on every `v*.*.*` tag by
 [`.github/workflows/publish-mcp.yml`](./.github/workflows/publish-mcp.yml),
-which stamps the tag into `server.json`, waits for the matching GHCR image, and
-authenticates with GitHub OIDC (no secret needed). The registry proves the image
-is ours via the `io.modelcontextprotocol.server.name` label in the
-[Dockerfile](./Dockerfile), so **the GHCR package must stay Public**.
+which waits for the matching GHCR image and authenticates with GitHub OIDC (no
+secret needed). The registry proves the image is ours via the
+`io.modelcontextprotocol.server.name` label in the [Dockerfile](./Dockerfile),
+so **the GHCR package must stay Public**.
+
+### Releasing
+
+**The git tag is the version.** Pushing `v1.2.3` is the whole release: the tag
+is stamped into `package.json` before the image is built and into `server.json`
+before the listing is published, so the version the server reports to MCP
+clients, the image tag, and the registry entry cannot disagree. Nothing needs to
+be bumped by hand first, and the versions committed here are only the defaults
+used by local builds.
 
 ## Credits & license
 
